@@ -1,4 +1,4 @@
-# kuber-docs
+# kuber manifests
 
 ## Pod
 ```yaml
@@ -300,4 +300,163 @@ spec:
     defautRequest:
       memory: 256Mi
     type: Container
+```
+
+## DaemonSet
+```yaml
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: DaemonSet
+  labels:
+    app: DaemonSet
+    type: front
+spec:
+  selector:
+    matchLabels:
+      app: pod
+  template:
+    metadata:
+      name: pod
+      labels:
+        app: pod
+        type: front
+    spec:
+      containers:
+        - name: pod
+          image: nginx
+```
+
+## Static Pods
+### Scheduler
+#### Kubeconfig custom-scheduler
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: custom-scheduler
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - kube-scheduler
+    - --bind-address=127.0.0.1
+    - kubeconfig=/etc/kubernetes/scheduler.conf
+    - config=/etc/kubernetes/custom-scheduler.yml
+    name: kube-scheduler
+    image: kube-scheduler:v1.30.3
+```
+#### Config custom-scheduler
+```yaml
+---
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: CubeSchedulerConfiguration
+profiles:
+- schedulerName: custom-scheduler
+leaderElection:
+  leaderElect: true # If replics > 1
+  resourceNamespace: kube-system
+  resourceName: custom-scheduler
+```
+#### Pod with custom scheduler
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod
+spec:
+  containers:
+  - name: pod
+    image: nginx
+  schedulerName: custom-scheduler
+```
+
+#### PriorityClass
+```yaml
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: high-priority
+value: 1000000
+preemptionPolicy: Never
+globalDefault: false
+description: "Our cristal app"
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod
+spec:
+  priorityClassName: high-priority
+  containers:
+  - name: pod
+    image: nginx
+```
+
+#### Custom-scheduler with profiles
+```yaml
+---
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: custom-scheduler
+  plugins:
+    preScore:
+      enabled:
+      - name: InterPodAffinity
+      disabled:
+      - name: CustomPlugin1
+      - name: CustomPlugin2
+    Score:
+      disabled:
+      - name: "*"
+...
+```
+#### Custom-scheduler
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: my-scheduler
+  name: my-scheduler
+  namespace: kube-system
+spec:
+  serviceAccountName: my-scheduler
+  containers:
+  - command:
+    - /usr/local/bin/kube-scheduler
+    - --config=/etc/kubernetes/my-scheduler/my-scheduler-config.yaml
+    image: registry.k8s.io/kube-scheduler:v1.30.1
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 10259
+        scheme: HTTPS
+      initialDelaySeconds: 15
+    name: kube-second-scheduler
+    readinessProbe:
+      httpGet:
+        path: /healthz
+        port: 10259
+        scheme: HTTPS
+    resources:
+      requests:
+        cpu: '0.1'
+    securityContext:
+      privileged: false
+    volumeMounts:
+      - name: config-volume
+        mountPath: /etc/kubernetes/my-scheduler
+  hostNetwork: false
+  hostPID: false
+  volumes:
+    - name: config-volume
+      configMap:
+        name: my-scheduler-config
 ```
